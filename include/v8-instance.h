@@ -16,7 +16,10 @@ public:
       isolate(v8::Isolate::New(create_params)) {}
 
     ~v8_instance() {
+        context.Reset();
+        function.Reset();
         isolate->Dispose();
+        delete create_params.array_buffer_allocator;
     }
 
     seastar::future<bool> init_instance(const std::string script_path) {
