@@ -1,20 +1,22 @@
 #pragma once
 
+#include "native_thread_pool.h"
 #include "v8-instance.h"
 
 #include "libplatform/libplatform.h"
 #include "v8.h"
 
 #include "seastar/core/future.hh"
-#include "seastar/core/seastar.hh"
 
 #include <iostream>
-#include <sys/socket.h>
 #include <unordered_map>
 
 
 class storage_t {
 public:
+    storage_t(v::ThreadPool& thread_pool_)
+    : thread_pool(thread_pool_) {}
+
     seastar::future<bool> add_new_instance(const std::string& instance_name, const std::string& script_path) {
         auto engine_it = v8_instances.find(instance_name);
         if (engine_it != v8_instances.end()) {
@@ -25,15 +27,17 @@ public:
         return create_instance(instance_name, script_path);
     }
 
-    bool run_instance(const std::string& instance_name) {
-       auto engine_it = v8_instances.find(instance_name);
+    seastar::future<bool> run_instance(std::string instance_name) {
+        auto engine_it = v8_instances.find(instance_name);
         if (engine_it == v8_instances.end()) {
             std::cout << "Can not find script " << instance_name << std::endl;
-            return false;
+            return seastar::make_ready_future<bool>(false);
         }
 
-        engine_it->second.run_instance();
-        return true;
+        return thread_pool.submit([engine_it](){ engine_it->second.run_instance(); })
+        .then([](){
+            return seastar::make_ready_future<bool>(true);
+        });
     }
 
     bool delete_instance(const std::string& instance_name) {
@@ -79,5 +83,6 @@ private:
         return it.first->second.init_instance(script_path);
     }
 
-    std::unordered_map<std::string, v8_instance> v8_instances;
+    v::ThreadPool& thread_pool;
+    std::unordered_map<std::string, v8_instance> v8_instances{};
 };

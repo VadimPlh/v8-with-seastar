@@ -30,6 +30,7 @@ public:
     }
 
     bool run_instance() {
+        v8::Locker locker(isolate);
         v8::Isolate::Scope isolate_scope(isolate);
         v8::HandleScope handle_scope(isolate);
         v8::TryCatch try_catch(isolate);
@@ -68,6 +69,7 @@ private:
     seastar::future<bool> compile_script(const std::string script_path) {
         return read_file(script_path)
         .then([this](const seastar::temporary_buffer<char> script) mutable {
+            v8::Locker locker(isolate);
             v8::Isolate::Scope isolate_scope(isolate);
             v8::HandleScope handle_scope(isolate);
             v8::TryCatch try_catch(isolate);
@@ -94,6 +96,7 @@ private:
     }
 
     seastar::future<bool> create_script() {
+        v8::Locker locker(isolate);
         v8::Isolate::Scope isolate_scope(isolate);
         v8::HandleScope handle_scope(isolate);
         v8::Local<v8::Context> local_ctx = v8::Local<v8::Context>::New(isolate, context);
