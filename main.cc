@@ -45,6 +45,9 @@ int main(int argc, char** argv) {
                                 return seastar::make_ready_future<void>();
                             });
                         });
+                    })
+                    .then([](){
+                        storage_t::shutdown_v8();
                     });
                 });
             })
