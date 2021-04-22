@@ -1,4 +1,4 @@
-/home/vadim/v8-with-seastar/examples/loop_with_allocate.js#pragma once
+#pragma once
 
 #include "native_thread_pool.h"
 #include "v8-instance.h"
