@@ -30,6 +30,7 @@ public:
     }
 
     bool run_instance() {
+        is_finish.store(false);
         v8::Locker locker(isolate);
         v8::Isolate::Scope isolate_scope(isolate);
         v8::HandleScope handle_scope(isolate);
@@ -46,14 +47,41 @@ public:
         if (!local_function->Call(local_ctx, local_ctx->Global(), argc, argv).ToLocal(&result)) {
             v8::String::Utf8Value error(isolate, try_catch.Exception());
             std::cout << "Can not run script: " << std::string(*error, error.length()) << std::endl;
+            is_finish.store(true);
             return false;
         }
 
+        is_finish.store(true);
         return true;
     }
 
     void wrap_external_memory(char* data_ptr, size_t size) {
         store = v8::ArrayBuffer::NewBackingStore(data_ptr, size, v8::BackingStore::EmptyDeleter, nullptr);
+    }
+
+    void stop_execution_loop(std::chrono::time_point<std::chrono::high_resolution_clock> start_time, double timeout) {
+        while (true) {
+            if (is_finish.load()) {
+                break;
+            }
+
+            auto now = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> time = now - start_time;
+            if (time.count() > timeout) {
+                //This method can be used by any thread even if that thread has not
+                //acquired the V8 lock with a Locker object.
+                isolate->TerminateExecution();
+                break;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    }
+
+    void continue_execution() {
+        if (isolate->IsExecutionTerminating()) {
+            isolate->CancelTerminateExecution();
+        }
     }
 
 private:
@@ -120,4 +148,6 @@ private:
     v8::Global<v8::Function> function;
 
     std::shared_ptr<v8::BackingStore> store;
+
+    std::atomic<bool> is_finish{false};
 };

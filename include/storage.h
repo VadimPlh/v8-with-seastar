@@ -1,4 +1,4 @@
-#pragma once
+/home/vadim/v8-with-seastar/examples/loop_with_allocate.js#pragma once
 
 #include "native_thread_pool.h"
 #include "v8-instance.h"
@@ -7,6 +7,7 @@
 #include "v8.h"
 
 #include "seastar/core/future.hh"
+#include "seastar/core/when_all.hh"
 
 #include <iostream>
 #include <unordered_map>
@@ -34,8 +35,12 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        return thread_pool.submit([engine_it](){ engine_it->second.run_instance(); })
-        .then([](){
+        auto run_future = thread_pool.submit([engine_it](){ engine_it->second.run_instance(); });
+        auto stop_future = thread_pool.submit([engine_it](){ engine_it->second.stop_execution_loop(std::chrono::high_resolution_clock::now(), 3.0); });
+
+        return seastar::when_all(std::move(run_future), std::move(stop_future))
+        .then([engine_it](auto res){
+            engine_it->second.continue_execution();
             return seastar::make_ready_future<bool>(true);
         });
     }
