@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
                         return storage_ptr->add_new_instance("test", "/home/vadim/v8-with-seastar/examples/loop.js")
                         .then([&storage_ptr](auto result){
                             auto* raw_ptr = new char[sizeof(test_sum_t)];
-                            storage_ptr->wrap_external_memory("test", raw_ptr, sizeof(int));
+                            storage_ptr->wrap_external_memory("test", raw_ptr, sizeof(test_sum_t));
 
                             auto* obj_ptr = reinterpret_cast<test_sum_t*>(raw_ptr);
 
