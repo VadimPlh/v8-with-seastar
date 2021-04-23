@@ -59,23 +59,8 @@ public:
         store = v8::ArrayBuffer::NewBackingStore(data_ptr, size, v8::BackingStore::EmptyDeleter, nullptr);
     }
 
-    void stop_execution_loop(std::chrono::time_point<std::chrono::high_resolution_clock> start_time, double timeout) {
-        while (true) {
-            if (is_finish.load()) {
-                break;
-            }
-
-            auto now = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> time = now - start_time;
-            if (time.count() > timeout) {
-                //This method can be used by any thread even if that thread has not
-                //acquired the V8 lock with a Locker object.
-                isolate->TerminateExecution();
-                break;
-            } else {
-                std::this_thread::yield();
-            }
-        }
+    void stop_execution_loop() {
+        isolate->TerminateExecution();
     }
 
     void continue_execution() {

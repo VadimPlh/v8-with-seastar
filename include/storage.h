@@ -9,6 +9,7 @@
 #include "seastar/core/future.hh"
 #include "seastar/core/when_all.hh"
 
+#include <chrono>
 #include <iostream>
 #include <unordered_map>
 
@@ -35,13 +36,22 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        auto run_future = thread_pool.submit([engine_it](){ engine_it->second.run_instance(); });
-        auto stop_future = thread_pool.submit([engine_it](){ engine_it->second.stop_execution_loop(std::chrono::high_resolution_clock::now(), 3.0); });
+        return seastar::do_with(seastar::timer<seastar::lowres_clock>(), false, [this, engine_it](auto& watchdog, auto& canceled){
+            watchdog.set_callback([this, engine_it, &canceled]{
+                    engine_it->second.stop_execution_loop();
+                    canceled = true;
+            });
 
-        return seastar::when_all(std::move(run_future), std::move(stop_future))
-        .then([engine_it](auto res){
-            engine_it->second.continue_execution();
-            return seastar::make_ready_future<bool>(true);
+            watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(1)));
+            return thread_pool.submit([engine_it](){
+                engine_it->second.run_instance();
+            })
+            .then([&watchdog, &canceled] {
+                if (!canceled) {
+            		watchdog.cancel();
+            	}
+            	return seastar::make_ready_future<bool>(canceled);
+            });
         });
     }
 
