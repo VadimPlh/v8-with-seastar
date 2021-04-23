@@ -36,16 +36,7 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        engine_it->second.rearm(1);
-        return thread_pool.submit([engine_it](){
-            engine_it->second.run_instance();
-        })
-        .then([engine_it] {
-            if (!engine_it->second.get_is_cancel_flag()) {
-            	engine_it->second.cancel_watchdog();
-            }
-        	return seastar::make_ready_future<bool>(engine_it->second.get_is_cancel_flag());
-        });
+        return engine_it->second.run_instance(thread_pool, 1);
     }
 
     bool delete_instance(const std::string& instance_name) {

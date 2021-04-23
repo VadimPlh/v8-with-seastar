@@ -95,6 +95,12 @@ int main(int argc, char** argv) {
                                 run_wasm_simple(storage_ptr),
                                 run_loop(storage_ptr)
                             ).discard_result();
+                        })
+                        .then([&storage_ptr](){
+                            return seastar::when_all(
+                                run_loop(storage_ptr),
+                                run_loop(storage_ptr)
+                            ).discard_result();
                         });
                     })
 
