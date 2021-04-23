@@ -13,7 +13,12 @@ class v8_instance {
 public:
     v8_instance(v8::Isolate::CreateParams create_params_)
     : create_params(std::move(create_params_)),
-      isolate(v8::Isolate::New(create_params)) {}
+      isolate(v8::Isolate::New(create_params)) {
+            watchdog.set_callback([this]{
+                stop_execution_loop();
+                is_cancel = true;
+            });
+      }
 
     ~v8_instance() {
         context.Reset();
@@ -30,7 +35,6 @@ public:
     }
 
     bool run_instance() {
-        is_finish.store(false);
         v8::Locker locker(isolate);
         v8::Isolate::Scope isolate_scope(isolate);
         v8::HandleScope handle_scope(isolate);
@@ -47,11 +51,9 @@ public:
         if (!local_function->Call(local_ctx, local_ctx->Global(), argc, argv).ToLocal(&result)) {
             v8::String::Utf8Value error(isolate, try_catch.Exception());
             std::cout << "Can not run script: " << std::string(*error, error.length()) << std::endl;
-            is_finish.store(true);
             return false;
         }
 
-        is_finish.store(true);
         return true;
     }
 
@@ -67,6 +69,19 @@ public:
         if (isolate->IsExecutionTerminating()) {
             isolate->CancelTerminateExecution();
         }
+    }
+
+    bool get_is_cancel_flag() {
+        return is_cancel;
+    }
+
+    void rearm(int timeout) {
+        is_cancel = false;
+        watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(timeout)));
+    }
+
+    void cancel_watchdog() {
+        watchdog.cancel();
     }
 
 private:
@@ -134,5 +149,6 @@ private:
 
     std::shared_ptr<v8::BackingStore> store;
 
-    std::atomic<bool> is_finish{false};
+    bool is_cancel;
+    seastar::timer<seastar::lowres_clock> watchdog;
 };

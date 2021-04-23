@@ -36,22 +36,15 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        return seastar::do_with(seastar::timer<seastar::lowres_clock>(), false, [this, engine_it](auto& watchdog, auto& canceled){
-            watchdog.set_callback([this, engine_it, &canceled]{
-                    engine_it->second.stop_execution_loop();
-                    canceled = true;
-            });
-
-            watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(1)));
-            return thread_pool.submit([engine_it](){
-                engine_it->second.run_instance();
-            })
-            .then([&watchdog, &canceled] {
-                if (!canceled) {
-            		watchdog.cancel();
-            	}
-            	return seastar::make_ready_future<bool>(canceled);
-            });
+        engine_it->second.rearm(1);
+        return thread_pool.submit([engine_it](){
+            engine_it->second.run_instance();
+        })
+        .then([engine_it] {
+            if (!engine_it->second.get_is_cancel_flag()) {
+            	engine_it->second.cancel_watchdog();
+            }
+        	return seastar::make_ready_future<bool>(engine_it->second.get_is_cancel_flag());
         });
     }
 
