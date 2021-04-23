@@ -202,6 +202,11 @@ public:
                 });
           });
     }
+
+
+    size_t get_threads_count() {
+        return threads.size(); // Is it data tace?
+    }
 };
 
 } // namespace v

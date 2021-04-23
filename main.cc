@@ -20,14 +20,14 @@ struct test_sum_t {
 
 seastar::future<> run_simple(std::unique_ptr<storage_t>& storage_ptr) {
     auto* raw_ptr = new char[sizeof(test_sum_t)];
-    storage_ptr->wrap_external_memory("simple_sum", raw_ptr, sizeof(test_sum_t));
-
     auto* obj_ptr = reinterpret_cast<test_sum_t*>(raw_ptr);
     obj_ptr->a = 1;
     obj_ptr->b = 3;
     obj_ptr->ans = 0;
 
-    return storage_ptr->run_instance("simple_sum")
+    std::span<char> data_span(raw_ptr, raw_ptr + sizeof(test_sum_t));
+
+    return storage_ptr->run_instance("simple_sum", data_span)
     .then([raw_ptr, obj_ptr](auto res){
         assert(obj_ptr->ans == obj_ptr->a + obj_ptr->b);
         delete[] raw_ptr;
@@ -38,14 +38,14 @@ seastar::future<> run_simple(std::unique_ptr<storage_t>& storage_ptr) {
 
 seastar::future<> run_wasm_simple(std::unique_ptr<storage_t>& storage_ptr) {
     auto* raw_ptr = new char[sizeof(test_sum_t)];
-    storage_ptr->wrap_external_memory("sum_wasm", raw_ptr, sizeof(test_sum_t));
-
     auto* obj_ptr = reinterpret_cast<test_sum_t*>(raw_ptr);
     obj_ptr->a = 1;
     obj_ptr->b = 3;
     obj_ptr->ans = 0;
 
-    return storage_ptr->run_instance("sum_wasm")
+    std::span<char> data_span(raw_ptr, raw_ptr + sizeof(test_sum_t));
+
+    return storage_ptr->run_instance("sum_wasm", data_span)
     .then([raw_ptr, obj_ptr](auto res){
         assert(obj_ptr->ans == obj_ptr->a + obj_ptr->b);
         delete[] raw_ptr;
@@ -56,8 +56,8 @@ seastar::future<> run_wasm_simple(std::unique_ptr<storage_t>& storage_ptr) {
 
 seastar::future<> run_loop(std::unique_ptr<storage_t>& storage_ptr) {
     auto* raw_ptr = new char[sizeof(int)];
-    storage_ptr->wrap_external_memory("loop", raw_ptr, sizeof(int));
-    return storage_ptr->run_instance("loop")
+    std::span<char> data_span(raw_ptr, raw_ptr + sizeof(int));
+    return storage_ptr->run_instance("loop", data_span)
     .then([raw_ptr](auto res){
         delete[] raw_ptr;
         return seastar::make_ready_future<void>();
@@ -91,6 +91,9 @@ int main(int argc, char** argv) {
                         })
                         .then([&storage_ptr](){
                             return seastar::when_all(
+                                run_simple(storage_ptr),
+                                run_wasm_simple(storage_ptr),
+                                run_loop(storage_ptr),
                                 run_simple(storage_ptr),
                                 run_wasm_simple(storage_ptr),
                                 run_loop(storage_ptr)

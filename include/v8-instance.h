@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "seastar/core/do_with.hh"
 #include "seastar/core/file-types.hh"
 #include "seastar/core/file.hh"
@@ -34,12 +36,12 @@ public:
         });
     }
 
-    seastar::future<bool> run_instance(v::ThreadPool& thread_pool, int timeout) {
-        return seastar::with_semaphore(mtx, 1, [this, &thread_pool, timeout](){
+    seastar::future<bool> run_instance(v::ThreadPool& thread_pool, int timeout, std::span<char> data) {
+        return seastar::with_semaphore(mtx, 1, [this, &thread_pool, timeout, data](){
             is_cancel = false;
             watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(timeout)));
-            return thread_pool.submit([this](){
-                run_instance_internal();
+            return thread_pool.submit([this, data](){
+                run_instance_internal(data);
             })
             .then([this] {
                 if (!is_cancel) {
@@ -48,10 +50,6 @@ public:
         	    return seastar::make_ready_future<bool>(is_cancel);
             });
         });
-    }
-
-    void wrap_external_memory(char* data_ptr, size_t size) {
-        store = v8::ArrayBuffer::NewBackingStore(data_ptr, size, v8::BackingStore::EmptyDeleter, nullptr);
     }
 
     void stop_execution_loop() {
@@ -121,7 +119,7 @@ private:
         return seastar::make_ready_future<bool>(true);
     }
 
-    bool run_instance_internal() {
+    bool run_instance_internal(std::span<char> data) {
         v8::Locker locker(isolate);
         v8::Isolate::Scope isolate_scope(isolate);
         v8::HandleScope handle_scope(isolate);
@@ -130,7 +128,8 @@ private:
         v8::Context::Scope context_scope(local_ctx);
 
         const int argc = 1;
-        auto array = v8::ArrayBuffer::New(isolate, store);
+        auto store = v8::ArrayBuffer::NewBackingStore(data.data(), data.size(), v8::BackingStore::EmptyDeleter, nullptr);
+        auto array = v8::ArrayBuffer::New(isolate, std::move(store));
         v8::Local<v8::Value> argv[argc] = { array };
         v8::Local<v8::Value> result;
 
@@ -149,8 +148,6 @@ private:
 
     v8::Global<v8::Context> context;
     v8::Global<v8::Function> function;
-
-    std::shared_ptr<v8::BackingStore> store;
 
     bool is_cancel;
     seastar::timer<seastar::lowres_clock> watchdog;

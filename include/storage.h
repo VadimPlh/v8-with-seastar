@@ -17,7 +17,8 @@
 class storage_t {
 public:
     storage_t(v::ThreadPool& thread_pool_)
-    : thread_pool(thread_pool_) {}
+    : thread_pool(thread_pool_),
+      free_threads(thread_pool_.get_threads_count()) {}
 
     seastar::future<bool> add_new_instance(const std::string& instance_name, const std::string& script_path) {
         auto engine_it = v8_instances.find(instance_name);
@@ -29,14 +30,16 @@ public:
         return create_instance(instance_name, script_path);
     }
 
-    seastar::future<bool> run_instance(std::string instance_name) {
+    seastar::future<bool> run_instance(std::string instance_name, std::span<char> data) {
         auto engine_it = v8_instances.find(instance_name);
         if (engine_it == v8_instances.end()) {
             std::cout << "Can not find script " << instance_name << std::endl;
             return seastar::make_ready_future<bool>(false);
         }
 
-        return engine_it->second.run_instance(thread_pool, 1);
+        return seastar::with_semaphore(free_threads, 1, [engine_it, this, data](){
+            return engine_it->second.run_instance(thread_pool, 1, data);
+        });
     }
 
     bool delete_instance(const std::string& instance_name) {
@@ -47,17 +50,6 @@ public:
         }
 
         v8_instances.erase(engine_it);
-        return true;
-    }
-
-    bool wrap_external_memory(const std::string& instance_name, char* data_ptr, size_t size) {
-        auto engine_it = v8_instances.find(instance_name);
-        if (engine_it == v8_instances.end()) {
-            std::cout << "Can not find script " << instance_name << std::endl;
-            return false;
-        }
-
-        engine_it->second.wrap_external_memory(data_ptr, size);
         return true;
     }
 
@@ -84,4 +76,6 @@ private:
 
     v::ThreadPool& thread_pool;
     std::unordered_map<std::string, v8_instance> v8_instances{};
+
+    seastar::semaphore free_threads;
 };
