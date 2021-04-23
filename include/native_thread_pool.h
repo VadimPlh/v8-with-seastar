@@ -156,7 +156,7 @@ public:
      * reasonable limit.
      */
     ThreadPool(size_t n_threads, size_t queue_size, unsigned cpu_id)
-      : queue_size{1} // round_up_to(queue_sz, seastar::smp::count)}
+      : queue_size{queue_size} // round_up_to(queue_sz, seastar::smp::count)}
       , pending{queue_size} {
         for (size_t i = 0; i < n_threads; i++) {
             threads.emplace_back([this, cpu_id] {
