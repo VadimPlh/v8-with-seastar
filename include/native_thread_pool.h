@@ -24,8 +24,11 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <semaphore.h>
 #include <tuple>
 #include <type_traits>
+
+#include "semaphore.h"
 
 namespace v {
 
@@ -110,6 +113,7 @@ class ThreadPool {
     seastar::sharded<SubmitQueue> submit_queue;
     const size_t queue_size;
     boost::lockfree::queue<WorkItem*> pending;
+    semaphore add_task_sem;
 
     void loop() {
         for (;;) {
@@ -157,7 +161,8 @@ public:
      */
     ThreadPool(size_t n_threads, size_t queue_size, unsigned cpu_id)
       : queue_size{queue_size} // round_up_to(queue_sz, seastar::smp::count)}
-      , pending{queue_size} {
+      , pending{queue_size}
+      , add_task_sem(n_threads) {
         for (size_t i = 0; i < n_threads; i++) {
             threads.emplace_back([this, cpu_id] {
                 pin(cpu_id);
@@ -203,9 +208,12 @@ public:
           });
     }
 
+    seastar::future<> lock() {
+        return add_task_sem.lock();
+    }
 
-    size_t get_threads_count() {
-        return threads.size(); // Is it data tace?
+    seastar::future<> unlock() {
+        return add_task_sem.unlock();
     }
 };
 

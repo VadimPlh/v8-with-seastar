@@ -17,8 +17,7 @@
 class storage_t {
 public:
     storage_t(v::ThreadPool& thread_pool_)
-    : thread_pool(thread_pool_),
-      free_threads(thread_pool_.get_threads_count()) {}
+    : thread_pool(thread_pool_) {}
 
     seastar::future<bool> add_new_instance(const std::string& instance_name, const std::string& script_path) {
         auto engine_it = v8_instances.find(instance_name);
@@ -37,8 +36,15 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        return seastar::with_semaphore(free_threads, 1, [engine_it, this, data](){
-            return engine_it->second.run_instance(thread_pool, 1, data);
+        return thread_pool.lock()
+        .then([this, engine_it, data]{
+            return engine_it->second.run_instance(thread_pool, 1.0, data);
+        })
+        .then([this](auto res){
+            return thread_pool.unlock()
+            .then([res](){
+                return seastar::make_ready_future<bool>(res);
+            });
         });
     }
 
@@ -76,6 +82,4 @@ private:
 
     v::ThreadPool& thread_pool;
     std::unordered_map<std::string, v8_instance> v8_instances{};
-
-    seastar::semaphore free_threads;
 };
