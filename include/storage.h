@@ -36,16 +36,7 @@ public:
             return seastar::make_ready_future<bool>(false);
         }
 
-        return thread_pool.lock()
-        .then([this, engine_it, data]{
-            return engine_it->second.run_instance(thread_pool, 1.0, data);
-        })
-        .then([this](auto res){
-            return thread_pool.unlock()
-            .then([res](){
-                return seastar::make_ready_future<bool>(res);
-            });
-        });
+        return engine_it->second.run_instance(thread_pool, 1.0, data);
     }
 
     bool delete_instance(const std::string& instance_name) {

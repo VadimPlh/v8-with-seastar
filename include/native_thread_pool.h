@@ -191,30 +191,29 @@ public:
                          args = std::forward_as_tuple(args...)] {
             return std::apply(std::move(func), std::move(args));
         };
-        return seastar::with_gate(
-          submit_queue.local().pending_tasks,
-          [packaged = std::move(packaged), this] {
-              return local_free_slots().wait().then(
-                [packaged = std::move(packaged), this] {
-                    auto task = new Task{std::move(packaged)};
-                    auto fut = task->get_future();
-                    pending.push(task);
-                    cond.notify_one();
-                    return fut.finally([task, this] {
-                        local_free_slots().signal();
-                        delete task;
+        return add_task_sem.lock()
+        .then([this, packaged = std::move(packaged)]{
+            return seastar::with_gate(
+            submit_queue.local().pending_tasks,
+            [packaged = std::move(packaged), this] {
+                return local_free_slots().wait().then(
+                    [packaged = std::move(packaged), this] {
+                        auto task = new Task{std::move(packaged)};
+                        auto fut = task->get_future();
+                        pending.push(task);
+                        cond.notify_one();
+                        return fut.finally([task, this] {
+                            local_free_slots().signal();
+                            delete task;
+                        });
                     });
-                });
-          });
+            });
+        })
+        .finally([this]{
+            return add_task_sem.unlock();
+        });
     }
-
-    seastar::future<> lock() {
-        return add_task_sem.lock();
-    }
-
-    seastar::future<> unlock() {
-        return add_task_sem.unlock();
-    }
+    
 };
 
 } // namespace v
