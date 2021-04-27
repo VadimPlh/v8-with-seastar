@@ -53,7 +53,11 @@ public:
     }
 
     void stop_execution_loop() {
-        isolate->TerminateExecution();
+        if (!isolate->IsExecutionTerminating()) {
+            isolate->TerminateExecution();
+        } else {
+            std::cout << "We have beed alreade stoped this thread" << std::endl;
+        }
     }
 
     void continue_execution() {
