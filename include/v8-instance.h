@@ -46,7 +46,7 @@ public:
                 if (!is_canceled) {
                     watchdog.cancel();
                 }
-        	    return seastar::make_ready_future<bool>(is_canceled);
+                return seastar::make_ready_future<bool>(!is_canceled);
             });
         });
     }

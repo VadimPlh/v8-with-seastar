@@ -23,7 +23,7 @@ public:
     seastar::future<bool> add_new_instance(const std::string& instance_name, const std::string& script_path) {
         auto engine_it = v8_instances.find(instance_name);
         if (engine_it != v8_instances.end()) {
-            std::cout << "Script " << instance_name << "already exists" << std::endl; //TODO: use log system from seastar
+            std::cout << "Script " << instance_name << " already exists" << std::endl; //TODO: use log system from seastar
             return seastar::make_ready_future<bool>(false);
         }
 
