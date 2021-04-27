@@ -18,7 +18,7 @@ public:
       isolate(v8::Isolate::New(create_params)) {
             watchdog.set_callback([this]{
                 stop_execution_loop();
-                is_cancel = true;
+                is_canceled = true;
             });
       }
 
@@ -38,16 +38,16 @@ public:
 
     seastar::future<bool> run_instance(v::ThreadPool& thread_pool, int timeout, std::span<char> data) {
         return seastar::with_semaphore(mtx, 1, [this, &thread_pool, timeout, data](){
-            is_cancel = false;
+            is_canceled = false;
             watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(timeout)));
             return thread_pool.submit([this, data](){
                 run_instance_internal(data);
             })
             .then([this] {
-                if (!is_cancel) {
+                if (!is_canceled) {
                     watchdog.cancel();
                 }
-        	    return seastar::make_ready_future<bool>(is_cancel);
+        	    return seastar::make_ready_future<bool>(is_canceled);
             });
         });
     }
@@ -149,7 +149,7 @@ private:
     v8::Global<v8::Context> context;
     v8::Global<v8::Function> function;
 
-    bool is_cancel;
+    bool is_canceled;
     seastar::timer<seastar::lowres_clock> watchdog;
 
     seastar::semaphore mtx{1};
