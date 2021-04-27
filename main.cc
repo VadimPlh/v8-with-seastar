@@ -67,7 +67,7 @@ seastar::future<> run_loop(std::unique_ptr<storage_t>& storage_ptr) {
 int main(int argc, char** argv) {
     seastar::app_template app;
     return app.run(argc, argv, [] {
-        std::unique_ptr<v::ThreadPool> thread_pool_ptr = std::make_unique<v::ThreadPool>(4, 4 * seastar::smp::count, 1);
+        std::unique_ptr<v::ThreadPool> thread_pool_ptr = std::make_unique<v::ThreadPool>(1, seastar::smp::count, 1);
         return seastar::do_with(std::move(thread_pool_ptr), [](auto& thread_pool_ptr){
             return thread_pool_ptr->start()
             .then([&thread_pool_ptr](){
