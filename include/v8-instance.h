@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "seastar/core/do_with.hh"
 #include "seastar/core/file-types.hh"
 #include "seastar/core/file.hh"
@@ -13,13 +15,17 @@ class v8_instance {
 public:
     v8_instance(v8::Isolate::CreateParams create_params_)
     : create_params(std::move(create_params_)),
-      isolate(v8::Isolate::New(create_params)) {}
+      isolate(v8::Isolate::New(create_params)) {
+            watchdog.set_callback([this]{
+                stop_execution_loop();
+                is_canceled = true;
+            });
+      }
 
     ~v8_instance() {
         context.Reset();
         function.Reset();
         isolate->Dispose();
-        delete create_params.array_buffer_allocator;
     }
 
     seastar::future<bool> init_instance(const std::string script_path) {
@@ -29,52 +35,27 @@ public:
         });
     }
 
-    bool run_instance() {
-        is_finish.store(false);
-        v8::Locker locker(isolate);
-        v8::Isolate::Scope isolate_scope(isolate);
-        v8::HandleScope handle_scope(isolate);
-        v8::TryCatch try_catch(isolate);
-        v8::Local<v8::Context> local_ctx = v8::Local<v8::Context>::New(isolate, context);
-        v8::Context::Scope context_scope(local_ctx);
-
-        const int argc = 1;
-        auto array = v8::ArrayBuffer::New(isolate, store);
-        v8::Local<v8::Value> argv[argc] = { array };
-        v8::Local<v8::Value> result;
-
-        v8::Local<v8::Function> local_function = v8::Local<v8::Function>::New(isolate, function);
-        if (!local_function->Call(local_ctx, local_ctx->Global(), argc, argv).ToLocal(&result)) {
-            v8::String::Utf8Value error(isolate, try_catch.Exception());
-            std::cout << "Can not run script: " << std::string(*error, error.length()) << std::endl;
-            is_finish.store(true);
-            return false;
-        }
-
-        is_finish.store(true);
-        return true;
+    seastar::future<bool> run_instance(v::ThreadPool& thread_pool, int timeout, std::span<char> data) {
+        return seastar::with_semaphore(mtx, 1, [this, &thread_pool, timeout, data](){
+            is_canceled = false;
+            watchdog.rearm(seastar::lowres_clock::time_point(seastar::lowres_clock::now() + std::chrono::seconds(timeout)));
+            return thread_pool.submit([this, data](){
+                run_instance_internal(data);
+            })
+            .then([this] {
+                if (!is_canceled) {
+                    watchdog.cancel();
+                }
+        	    return seastar::make_ready_future<bool>(is_canceled);
+            });
+        });
     }
 
-    void wrap_external_memory(char* data_ptr, size_t size) {
-        store = v8::ArrayBuffer::NewBackingStore(data_ptr, size, v8::BackingStore::EmptyDeleter, nullptr);
-    }
-
-    void stop_execution_loop(std::chrono::time_point<std::chrono::high_resolution_clock> start_time, double timeout) {
-        while (true) {
-            if (is_finish.load()) {
-                break;
-            }
-
-            auto now = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> time = now - start_time;
-            if (time.count() > timeout) {
-                //This method can be used by any thread even if that thread has not
-                //acquired the V8 lock with a Locker object.
-                isolate->TerminateExecution();
-                break;
-            } else {
-                std::this_thread::yield();
-            }
+    void stop_execution_loop() {
+        if (!isolate->IsExecutionTerminating()) {
+            isolate->TerminateExecution();
+        } else {
+            std::cout << "We have beed alreade stoped this thread" << std::endl;
         }
     }
 
@@ -141,13 +122,38 @@ private:
         return seastar::make_ready_future<bool>(true);
     }
 
+    bool run_instance_internal(std::span<char> data) {
+        v8::Locker locker(isolate);
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::TryCatch try_catch(isolate);
+        v8::Local<v8::Context> local_ctx = v8::Local<v8::Context>::New(isolate, context);
+        v8::Context::Scope context_scope(local_ctx);
+
+        const int argc = 1;
+        auto store = v8::ArrayBuffer::NewBackingStore(data.data(), data.size(), v8::BackingStore::EmptyDeleter, nullptr);
+        auto array = v8::ArrayBuffer::New(isolate, std::move(store));
+        v8::Local<v8::Value> argv[argc] = { array };
+        v8::Local<v8::Value> result;
+
+        v8::Local<v8::Function> local_function = v8::Local<v8::Function>::New(isolate, function);
+        if (!local_function->Call(local_ctx, local_ctx->Global(), argc, argv).ToLocal(&result)) {
+            v8::String::Utf8Value error(isolate, try_catch.Exception());
+            std::cout << "Can not run script: " << std::string(*error, error.length()) << std::endl;
+            return false;
+        }
+
+        return true;
+    }
+
     v8::Isolate::CreateParams create_params;
     v8::Isolate* isolate{};
 
     v8::Global<v8::Context> context;
     v8::Global<v8::Function> function;
 
-    std::shared_ptr<v8::BackingStore> store;
+    bool is_canceled;
+    seastar::timer<seastar::lowres_clock> watchdog;
 
-    std::atomic<bool> is_finish{false};
+    seastar::semaphore mtx{1};
 };

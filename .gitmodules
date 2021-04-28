@@ -1,3 +1,0 @@
-[submodule "libs/alien_thread"]
-	path = libs/alien_thread
-	url = https://github.com/vectorizedio/alien_thread.git

@@ -8,7 +8,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(libs/seastar)
 include_directories(include)
 include_directories(libs/v8/include)
-include_directories(libs/alien_thread/include/v)
 
 file(GLOB V8_LIB_MONOLIT "libs/v8/lib/libv8_monolith.a")
 

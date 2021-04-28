@@ -9,7 +9,9 @@
 #include "seastar/core/future.hh"
 #include "seastar/core/when_all.hh"
 
+#include <chrono>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 
 
@@ -28,21 +30,14 @@ public:
         return create_instance(instance_name, script_path);
     }
 
-    seastar::future<bool> run_instance(std::string instance_name) {
+    seastar::future<bool> run_instance(std::string instance_name, std::span<char> data) {
         auto engine_it = v8_instances.find(instance_name);
         if (engine_it == v8_instances.end()) {
             std::cout << "Can not find script " << instance_name << std::endl;
             return seastar::make_ready_future<bool>(false);
         }
 
-        auto run_future = thread_pool.submit([engine_it](){ engine_it->second.run_instance(); });
-        auto stop_future = thread_pool.submit([engine_it](){ engine_it->second.stop_execution_loop(std::chrono::high_resolution_clock::now(), 3.0); });
-
-        return seastar::when_all(std::move(run_future), std::move(stop_future))
-        .then([engine_it](auto res){
-            engine_it->second.continue_execution();
-            return seastar::make_ready_future<bool>(true);
-        });
+        return engine_it->second.run_instance(thread_pool, 1.0, data);
     }
 
     bool delete_instance(const std::string& instance_name) {
@@ -53,17 +48,6 @@ public:
         }
 
         v8_instances.erase(engine_it);
-        return true;
-    }
-
-    bool wrap_external_memory(const std::string& instance_name, char* data_ptr, size_t size) {
-        auto engine_it = v8_instances.find(instance_name);
-        if (engine_it == v8_instances.end()) {
-            std::cout << "Can not find script " << instance_name << std::endl;
-            return false;
-        }
-
-        engine_it->second.wrap_external_memory(data_ptr, size);
         return true;
     }
 
@@ -82,7 +66,7 @@ public:
 private:
     seastar::future<bool> create_instance(const std::string& instance_name, const std::string& script_path) {
         v8::Isolate::CreateParams create_params;
-        create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+        create_params.array_buffer_allocator_shared = std::shared_ptr<v8::ArrayBuffer::Allocator>(v8::ArrayBuffer::Allocator::NewDefaultAllocator());
 
         auto it = v8_instances.emplace(instance_name, std::move(create_params));
         return it.first->second.init_instance(script_path);
