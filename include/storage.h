@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 
 
@@ -65,7 +66,7 @@ public:
 private:
     seastar::future<bool> create_instance(const std::string& instance_name, const std::string& script_path) {
         v8::Isolate::CreateParams create_params;
-        create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+        create_params.array_buffer_allocator_shared = std::shared_ptr<v8::ArrayBuffer::Allocator>(v8::ArrayBuffer::Allocator::NewDefaultAllocator());
 
         auto it = v8_instances.emplace(instance_name, std::move(create_params));
         return it.first->second.init_instance(script_path);
