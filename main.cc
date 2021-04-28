@@ -74,17 +74,15 @@ int main(int argc, char** argv) {
             return thread_pool_ptr->start()
             .then([&thread_pool_ptr](){
                 std::unique_ptr<v8::Platform> platfrom_ptr = storage_t::init_v8();
-                return seastar::do_with(std::move(platfrom_ptr), v8_engine_server(*thread_pool_ptr), [](auto& platform, auto& server){
+                std::unique_ptr<v8_engine_server> server_ptr = std::make_unique<v8_engine_server>(*thread_pool_ptr);
+                return seastar::do_with(std::move(platfrom_ptr), std::move(server_ptr), [](auto& platform, auto& server){
 
-                    return server.start()
+                    return server->start()
                     .then([&server]{
-                        return server.listen();
+                        return server->listen();
                     })
                     .then([&server]{
-                        return seastar::do_until([]{ return false; }, []{ return seastar::make_ready_future<>(); });
-                    })
-                    .then([&server]{
-                        return server.stop();
+                        return server->stop();
                     })
                     .then([](){
                         storage_t::shutdown_v8();
