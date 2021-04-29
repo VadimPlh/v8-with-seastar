@@ -42,10 +42,7 @@ public:
     seastar::future<> listen() {
         seastar::ipv4_addr ip_addr = {"127.0.0.1", port};
         auto server_addr = seastar::socket_address(ip_addr);
-        return server->listen(server_addr)
-        .then([this]{
-            return signal.wait();
-        });
+        return server->listen(server_addr);
     }
 
     seastar::future<> stop() {
@@ -88,9 +85,7 @@ private:
     }
 
     seastar::shared_ptr<seastar::httpd::http_server_control> server;
-    const uint16_t port{12011};
+    const uint16_t port{12050};
 
     storage_t scripts_storage;
-
-    stop_signal signal;
 };

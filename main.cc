@@ -3,6 +3,7 @@
 #include "seastar/core/app-template.hh"
 #include "seastar/core/loop.hh"
 #include "seastar/core/shared_ptr.hh"
+#include "stop-signal.h"
 #include "storage.h"
 
 #include "native_thread_pool.h"
@@ -21,11 +22,15 @@ int main(int argc, char** argv) {
             .then([&thread_pool_ptr](){
                 std::unique_ptr<v8::Platform> platfrom_ptr = storage_t::init_v8();
                 std::unique_ptr<v8_engine_server> server_ptr = std::make_unique<v8_engine_server>(*thread_pool_ptr);
-                return seastar::do_with(std::move(platfrom_ptr), std::move(server_ptr), [](auto& platform, auto& server){
+                std::unique_ptr<stop_signal> stop_handler = std::make_unique<stop_signal>();
+                return seastar::do_with(std::move(platfrom_ptr), std::move(server_ptr), std::move(stop_handler), [](auto& platform, auto& server, auto& stop_handler){
 
                     return server->start()
                     .then([&server]{
                         return server->listen();
+                    })
+                    .then([&stop_handler]{
+                        return stop_handler->wait();
                     })
                     .then([&server]{
                         return server->stop();
